@@ -28,6 +28,7 @@ from courses_data import COURSES
 import keyboards
 import messages
 import database
+import dashboard
 
 # Configure logging
 logging.basicConfig(
@@ -410,6 +411,10 @@ def handle_all_callbacks(call: CallbackQuery):
 def main():
     logger.info("Initializing bot commands...")
     setup_bot_commands()
+    
+    # Automatically start Web Dashboard UI in the background
+    dashboard.start_dashboard_in_background(port=5000)
+    
     logger.info("🚀 Course Bot is online and listening for messages...")
     
     # Start polling
