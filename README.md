@@ -21,7 +21,13 @@ A production-ready Telegram bot built with **Python 3.14+** and **pyTelegramBotA
   - `/prices` - Full tuition fee matrix comparison
   - `/contact` - Direct contact details (email, phone, Telegram handle, website)
   - `/about` - About the academy and student outcomes
+  - `/stats` - Real-time visitor counts and interaction totals
+  - `/export` (or `/csv`) - Instant CSV download sent directly in chat
   - `/help` - Bot command and navigation reference
+- **Automatic Visitor Tracking & CSV Export**:
+  - Lightweight SQLite database (`bot_users.db`) automatically logs every visitor.
+  - Tracks user ID, username, first & last name, first visited date/time, last active date/time, total interactions, and last action.
+  - Export anytime via `/export` on Telegram or by running `python export_csv.py` on your computer.
 - **Dual Navigation UI**:
   - **Inline Keyboards**: Sleek buttons directly below messages.
   - **Reply Keyboard (Bottom Menu)**: Always accessible quick-action buttons.
@@ -36,10 +42,13 @@ A production-ready Telegram bot built with **Python 3.14+** and **pyTelegramBotA
 
 ```
 py12/
-├── bot.py             # Main bot application & command/callback routers
+├── bot.py             # Main bot application, commands, callbacks & tracking
+├── database.py        # SQLite storage engine & CSV export logic
+├── export_csv.py      # Standalone terminal script to export users.csv
 ├── courses_data.py    # Centralized course data, curriculum & contact information
 ├── keyboards.py       # Inline & Reply keyboard markup builders
 ├── messages.py        # Clean, beautifully formatted HTML message templates
+├── run.bat            # 1-click launcher for Windows
 ├── .env               # Your secret Telegram Bot token (ignored by Git)
 ├── .env.example       # Example configuration template
 ├── requirements.txt   # Python package dependencies

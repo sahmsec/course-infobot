@@ -19,12 +19,15 @@ if sys.platform == "win32":
         pass
 
 import telebot
+from telebot import apihelper
 from telebot.types import BotCommand, CallbackQuery, Message
 from telebot.apihelper import ApiTelegramException
+from datetime import datetime
 
 from courses_data import COURSES
 import keyboards
 import messages
+import database
 
 # Configure logging
 logging.basicConfig(
@@ -32,6 +35,9 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger("CourseBot")
+
+# Initialize database
+database.init_db()
 
 # Load environment variables
 load_dotenv()
@@ -50,8 +56,32 @@ if not BOT_TOKEN or BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN_HERE":
     print("=" * 65 + "\n")
     sys.exit(1)
 
+# Enable middleware before TeleBot initialization
+apihelper.ENABLE_MIDDLEWARE = True
+
 # Initialize bot instance with HTML default parse mode
 bot = telebot.TeleBot(token=BOT_TOKEN, parse_mode="HTML")
+
+
+@bot.middleware_handler(update_types=["message"])
+def track_message_visitor(bot_instance, message: Message):
+    """Automatically records every visitor message/command with category."""
+    if message and message.from_user:
+        text = message.text or "[Media/Non-text]"
+        if text.startswith("/"):
+            q_type = "command"
+        elif text in ["📚 Browse Courses", "💰 Pricing Overview", "📞 Contact Support", "❓ Help & FAQ"]:
+            q_type = "menu"
+        else:
+            q_type = "question"
+        database.log_user_visit(message.from_user, action=text, query_type=q_type)
+
+
+@bot.middleware_handler(update_types=["callback_query"])
+def track_callback_visitor(bot_instance, call: CallbackQuery):
+    """Automatically records every button click."""
+    if call and call.from_user:
+        database.log_user_visit(call.from_user, action=f"button:{call.data}", query_type="button")
 
 
 def setup_bot_commands():
@@ -63,6 +93,8 @@ def setup_bot_commands():
             BotCommand("prices", "Check tuition fees & plans"),
             BotCommand("contact", "Contact admissions counselor"),
             BotCommand("about", "Learn about our academy"),
+            BotCommand("stats", "View visitor counts"),
+            BotCommand("export", "Download visitor list as CSV"),
             BotCommand("help", "Help & navigation guide"),
         ]
         bot.set_my_commands(commands)
@@ -145,6 +177,47 @@ def handle_help(message: Message):
     )
 
 
+@bot.message_handler(commands=["stats"])
+def handle_stats(message: Message):
+    """Displays real-time visitor count and interaction metrics."""
+    stats = database.get_analytics_summary()
+    text = (
+        "📊 <b>Bot Visitor Analytics</b>\n\n"
+        f"👥 <b>Total Unique Visitors:</b> <code>{stats['total_users']}</code>\n"
+        f"⚡ <b>Total User Interactions:</b> <code>{stats['total_interactions']}</code>\n\n"
+        "💡 <i>Tip: Send /export to receive the complete user list as a CSV file.</i>"
+    )
+    bot.send_message(chat_id=message.chat.id, text=text)
+
+
+@bot.message_handler(commands=["export", "csv"])
+def handle_export_csv(message: Message):
+    """Exports all visitors to a CSV file and uploads it to the Telegram chat."""
+    stats = database.get_analytics_summary()
+    if stats["total_users"] == 0:
+        bot.send_message(
+            chat_id=message.chat.id,
+            text="ℹ️ <i>No visitor records yet. Once users send a message or click buttons, they will be tracked.</i>"
+        )
+        return
+
+    count, file_path = database.export_users_to_csv("users.csv")
+    try:
+        with open(file_path, "rb") as f:
+            bot.send_document(
+                chat_id=message.chat.id,
+                document=f,
+                caption=(
+                    f"📊 <b>Visitor Report ({count} unique users)</b>\n"
+                    f"Generated at: <code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>"
+                )
+            )
+    except Exception as e:
+        logger.error(f"Error sending CSV file: {e}")
+        bot.send_message(chat_id=message.chat.id, text=f"⚠️ Failed to send CSV file: {e}")
+
+
+
 # ==========================================================
 # PERSISTENT REPLY KEYBOARD TEXT HANDLERS
 # ==========================================================
@@ -167,6 +240,20 @@ def reply_contact(message: Message):
 @bot.message_handler(func=lambda msg: msg.text == "❓ Help & FAQ")
 def reply_help(message: Message):
     handle_help(message)
+
+
+@bot.message_handler(func=lambda msg: True, content_types=["text"])
+def handle_custom_inquiry(message: Message):
+    """Handles any free-text query or question sent by a user."""
+    from html import escape
+    first_name = message.from_user.first_name if message.from_user else "there"
+    text = (
+        f"📩 <b>Thank you for your message, {escape(first_name)}!</b>\n\n"
+        f"We've logged your query:\n"
+        f"<i>\"{escape(message.text)}\"</i>\n\n"
+        f"An admissions counselor will review this shortly. In the meantime, you can explore our course details or chat with our team directly:"
+    )
+    bot.reply_to(message, text, reply_markup=keyboards.get_contact_keyboard())
 
 
 # ==========================================================
